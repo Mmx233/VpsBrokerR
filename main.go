@@ -3,10 +3,12 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -35,7 +37,7 @@ func worker() {
 		if popes[b].a < 0 {
 			msg := "「" + popes[b].b + "」(" + popes[b].c + ") 宕机"
 			tprint(msg)
-			urler(msg, popes[b].b, 0, "down")
+			go urler(msg, popes[b].b, 0, "down")
 			delete(popes, b)
 			dpper[b] = &dpp{time.Now().Unix()}
 			break
@@ -69,7 +71,9 @@ func timecount(a string) string {
 
 func urler(msg string, name string, time int64, mtype string) {
 	_, err := http.Get(surl + "?msg=" + url.QueryEscape(msg) + "&name=" + url.QueryEscape(name) + "&time=" + strconv.FormatInt(time, 10) + "&type=" + mtype)
-	errer("上报URL请求失败", err)
+	if err != nil {
+		errer("上报URL请求失败", err)
+	}
 }
 
 type pp struct {
@@ -88,6 +92,8 @@ var dpper map[string]*dpp = make(map[string]*dpp)
 var name string
 var sign string
 var surl string
+
+var ip string
 
 func main() {
 	//接收参数
@@ -113,11 +119,12 @@ func main() {
 		if get["time"] == nil || get["name"] == nil || get["sign"] == nil {
 			w.Write([]byte(`{"status":"fail","message":"缺少参数"}`))
 		} else {
+			ip, _, _ = net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
 			name = get["name"][0]
 			if get["sign"][0] == "name" {
 				sign = name
 			} else if get["sign"][0] == "ip" {
-				sign = r.RemoteAddr
+				sign = ip
 			} else {
 				w.Write([]byte(`{"status":"fail","message":"sign参数有误"}`))
 				return
@@ -129,23 +136,23 @@ func main() {
 				return
 			}
 			if popes[sign] == nil {
-				popes[sign] = &pp{ttime, name, r.RemoteAddr}
+				popes[sign] = &pp{ttime, name, ip}
 				go worker()
 				if dpper[sign] != nil {
-					msg := "「" + name + "」(" + r.RemoteAddr + ") 恢复，历时" + timecount(sign)
+					msg := "「" + name + "」(" + ip + ") 恢复，历时" + timecount(sign)
 					tprint(msg)
-					urler(msg, name, time.Now().Unix()-dpper[sign].a, "up")
+					go urler(msg, name, time.Now().Unix()-dpper[sign].a, "up")
 					delete(dpper, sign)
 				} else {
-					msg := "新主机「" + name + "」(" + r.RemoteAddr + ") 上线"
+					msg := "新主机「" + name + "」(" + ip + ") 上线"
 					tprint(msg)
-					urler(msg, name, 0, "new")
+					go urler(msg, name, 0, "new")
 				}
 				w.Write([]byte(`{"status":"ok","data":"init"}`))
 			} else {
 				popes[sign].a = ttime
 				popes[sign].b = name
-				popes[sign].c = r.RemoteAddr
+				popes[sign].c = ip
 				w.Write([]byte(`{"status":"ok","data":"continue"}`))
 			}
 		}
