@@ -28,6 +28,16 @@ func checkFileIsExist(filename string) bool {
 	return true
 }
 
+func backe(b string) bool {
+	//心跳超时，反向请求
+	_, err := http.Get(popes[b].d)
+	if err == nil {
+		return false
+	} else {
+		return true
+	}
+}
+
 func worker() {
 	//计数者
 	b := sign
@@ -35,6 +45,10 @@ func worker() {
 		time.Sleep(time.Duration(1) * time.Second)
 		popes[b].a--
 		if popes[b].a < 0 {
+			if backe(b) {
+				popes[b].a = popes[b].aa
+				continue
+			}
 			msg := "「" + popes[b].b + "」(" + popes[b].c + ") 宕机"
 			tprint(msg)
 			go urler(msg, popes[b].b, 0, "down")
@@ -77,9 +91,11 @@ func urler(msg string, name string, time int64, mtype string) {
 }
 
 type pp struct {
-	a int
-	b string
-	c string
+	a  int
+	b  string
+	c  string
+	aa int
+	d  string
 }
 type dpp struct {
 	a int64
@@ -116,7 +132,7 @@ func main() {
 	}
 	http.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 		get := r.URL.Query()
-		if get["time"] == nil || get["name"] == nil || get["sign"] == nil {
+		if get["time"] == nil || get["name"] == nil || get["sign"] == nil || get["backend"] == nil {
 			w.Write([]byte(`{"status":"fail","message":"缺少参数"}`))
 		} else {
 			ip, _, _ = net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
@@ -136,7 +152,7 @@ func main() {
 				return
 			}
 			if popes[sign] == nil {
-				popes[sign] = &pp{ttime, name, ip}
+				popes[sign] = &pp{ttime, name, ip, ttime, get["backend"][0]}
 				go worker()
 				if dpper[sign] != nil {
 					msg := "「" + name + "」(" + ip + ") 恢复，历时" + timecount(sign)
@@ -151,6 +167,7 @@ func main() {
 				w.Write([]byte(`{"status":"ok","data":"init"}`))
 			} else {
 				popes[sign].a = ttime
+				popes[sign].aa = ttime
 				popes[sign].b = name
 				popes[sign].c = ip
 				w.Write([]byte(`{"status":"ok","data":"continue"}`))
