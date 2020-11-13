@@ -38,9 +38,34 @@ func worker() {
 		if popes[sign].a < 0 {
 			tprint(popes[sign].b + " 超时")
 			delete(popes, b)
+			dpper[b] = &dpp{time.Now().Unix()}
 			break
 		}
 	}
+}
+
+func timecount(a string) string {
+	temp := time.Now().Unix() - dpper[sign].a
+	a = ""
+	if temp > (24 * 60 * 60) {
+		temp2 := temp % (24 * 60 * 60)
+		a += strconv.FormatInt((temp-temp2)/(24*60*60), 10) + "天"
+		temp = temp2
+	}
+	if temp > (60 * 60) {
+		temp2 := temp % (60 * 60)
+		a += strconv.FormatInt((temp-temp2)/(60*60), 10) + "时"
+		temp = temp2
+	}
+	if temp > 60 {
+		temp2 := temp % 60
+		a += strconv.FormatInt((temp-temp2)/60, 10) + "分"
+		temp = temp2
+	}
+	if temp > 0 {
+		a += strconv.FormatInt(temp, 10) + "秒"
+	}
+	return a
 }
 
 type pp struct {
@@ -48,8 +73,12 @@ type pp struct {
 	b string
 	c string
 }
+type dpp struct {
+	a int64
+}
 
 var popes map[string]*pp = make(map[string]*pp)
+var dpper map[string]*dpp = make(map[string]*dpp)
 
 //接收get参数
 var name string
@@ -100,13 +129,18 @@ func main() {
 			if popes[sign] == nil {
 				popes[sign] = &pp{time, name, r.RemoteAddr}
 				go worker()
-				tprint(name + " 上线")
+				if dpper[sign] != nil {
+					tprint("「" + name + "」恢复，历时" + timecount(sign))
+					delete(dpper, sign)
+				} else {
+					tprint("新主机「" + name + "」上线")
+				}
 				w.Write([]byte(`{"status":"ok","data":"init"}`))
 			} else {
 				popes[sign].a = time
 				popes[sign].b = name
 				popes[sign].c = r.RemoteAddr
-				w.Write([]byte(`{"status":"ok","data":"ok"}`))
+				w.Write([]byte(`{"status":"ok","data":"continue"}`))
 			}
 		}
 	})
