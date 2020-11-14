@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
@@ -30,12 +32,25 @@ func checkFileIsExist(filename string) bool {
 
 func backe(b string) bool {
 	//心跳超时，反向请求
-	_, err := http.Get(popes[b].d)
-	if err == nil {
+	h, err := http.Get(popes[b].d)
+	if err != nil {
+		tprint("「" + popes[b].b + "」(" + popes[b].c + ") 反向请求失败")
 		return false
-	} else {
-		return true
 	}
+	defer h.Body.Close()
+	body, err := ioutil.ReadAll(h.Body)
+	if err != nil {
+		tprint("「" + popes[b].b + "」(" + popes[b].c + ") 反向响应解析失败")
+		return false
+	}
+
+	if strings.TrimSpace(string(body)) == "1" {
+		return true
+	} else {
+		tprint("「" + popes[b].b + "」(" + popes[b].c + ") 反向响应不正确")
+		return false
+	}
+
 }
 
 func worker() {
@@ -45,8 +60,9 @@ func worker() {
 		time.Sleep(time.Duration(1) * time.Second)
 		popes[b].a--
 		if popes[b].a < 0 {
-			if backe(b) {
+			if popes[b].d != "" && backe(b) {
 				popes[b].a = popes[b].aa
+				tprint("「" + popes[b].b + "」(" + popes[b].c + ") 心跳超时，反向正常")
 				continue
 			}
 			msg := "「" + popes[b].b + "」(" + popes[b].c + ") 宕机"
@@ -90,6 +106,16 @@ func urler(msg string, name string, time int64, mtype string) {
 	}
 }
 
+func Write(name string, content []byte) {
+	name += ".txt"
+	err := ioutil.WriteFile(name, content, 0666)
+	if err != nil {
+		errer("写日志失败", err)
+	} else {
+		tprint("已写入日志")
+	}
+}
+
 type pp struct {
 	a  int
 	b  string
@@ -108,6 +134,7 @@ var dpper map[string]*dpp = make(map[string]*dpp)
 var name string
 var sign string
 var surl string
+var logg string
 
 var ip string
 
@@ -118,6 +145,7 @@ func main() {
 	flag.StringVar(&port, "p", "233", "监听端口")
 	flag.StringVar(&path, "path", "/", "心跳路径")
 	flag.StringVar(&surl, "url", "", "上报URL")
+	flag.StringVar(&logg, "log", "false", "日志开关")
 	flag.Parse()
 
 	//检查参数
@@ -132,9 +160,13 @@ func main() {
 	}
 	http.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 		get := r.URL.Query()
-		if get["time"] == nil || get["name"] == nil || get["sign"] == nil || get["backend"] == nil {
+		if get["time"] == nil || get["name"] == nil || get["sign"] == nil {
 			w.Write([]byte(`{"status":"fail","message":"缺少参数"}`))
 		} else {
+			var backend string
+			if get["backend"] != nil {
+				backend = get["backend"][0]
+			}
 			ip, _, _ = net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
 			name = get["name"][0]
 			if get["sign"][0] == "name" {
@@ -152,9 +184,39 @@ func main() {
 				return
 			}
 			if popes[sign] == nil {
-				popes[sign] = &pp{ttime, name, ip, ttime, get["backend"][0]}
+				popes[sign] = &pp{ttime, name, ip, ttime, backend}
 				go worker()
 				if dpper[sign] != nil {
+					if logg == "true" {
+						temp := time.Now().Format("2006-01")
+						temp2 := strconv.FormatInt(time.Now().Unix(), 10)
+						temp1 := []string{
+							"log",
+							"log/" + temp,
+							"log/" + temp + "/" + sign,
+							"log/" + temp + "/" + sign + "/" + temp2,
+						}
+						for _, pa := range temp1 {
+							if !checkFileIsExist(pa) {
+								err := os.Mkdir(pa, os.ModePerm)
+								if err != nil {
+									errer("创建文件夹 "+pa+" 失败", err)
+								}
+							}
+						}
+						data := map[string]string{
+							"name":  name,
+							"ip":    ip,
+							"break": strconv.FormatInt(dpper[sign].a, 10),
+							"back":  temp2,
+						}
+						bytw, err := json.Marshal(&data)
+						if err != nil {
+							errer("json编码失败", err)
+						} else {
+							Write("log/"+temp+"/"+sign+"/"+temp2, bytw)
+						}
+					}
 					msg := "「" + name + "」(" + ip + ") 恢复，历时" + timecount(sign)
 					tprint(msg)
 					go urler(msg, name, time.Now().Unix()-dpper[sign].a, "up")
@@ -170,6 +232,7 @@ func main() {
 				popes[sign].aa = ttime
 				popes[sign].b = name
 				popes[sign].c = ip
+				popes[sign].d = backend
 				w.Write([]byte(`{"status":"ok","data":"continue"}`))
 			}
 		}
