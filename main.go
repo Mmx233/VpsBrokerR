@@ -194,7 +194,6 @@ func main() {
 							"log",
 							"log/" + temp,
 							"log/" + temp + "/" + sign,
-							"log/" + temp + "/" + sign + "/" + temp2,
 						}
 						for _, pa := range temp1 {
 							if !checkFileIsExist(pa) {
