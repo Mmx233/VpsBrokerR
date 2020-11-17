@@ -155,6 +155,7 @@ func main() {
 	}
 
 	//监听
+	tprint("开始监听 " + ":" + port + path)
 	s := &http.Server{
 		Addr: ":" + port,
 	}
