@@ -5,13 +5,14 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/gin-gonic/gin"
 )
 
 func tprint(a string) {
@@ -155,33 +156,41 @@ func main() {
 	}
 
 	//监听
+	e := gin.New()
+	e.Use(gin.Recovery())
 	tprint("开始监听 " + ":" + port + path)
-	s := &http.Server{
-		Addr: ":" + port,
-	}
-	http.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
-		get := r.URL.Query()
-		if get["time"] == nil || get["name"] == nil || get["sign"] == nil {
-			w.Write([]byte(`{"status":"fail","message":"缺少参数"}`))
+	e.GET(path, func(c *gin.Context) {
+		if c.Query("time") == "" || c.Query("name") == "" || c.Query("sign") == "" {
+			c.JSON(200, gin.H{
+				"status":  "fail",
+				"message": "缺少参数",
+			})
+			return
 		} else {
 			var backend string
-			if get["backend"] != nil {
-				backend = get["backend"][0]
+			if c.Query("backend") != "" {
+				backend = c.Query("backend")
 			}
-			ip, _, _ = net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
-			name = get["name"][0]
-			if get["sign"][0] == "name" {
+			ip = c.ClientIP()
+			name = c.Query("name")
+			if c.Query("sign") == "name" {
 				sign = name
-			} else if get["sign"][0] == "ip" {
+			} else if c.Query("sign") == "ip" {
 				sign = ip
 			} else {
-				w.Write([]byte(`{"status":"fail","message":"sign参数有误"}`))
+				c.JSON(200, gin.H{
+					"status":  "fail",
+					"message": "sign参数有误",
+				})
 				return
 			}
-			ttime, err := strconv.Atoi(get["time"][0])
+			ttime, err := strconv.Atoi(c.Query("time"))
 			if err != nil {
 				errer("请求中的time参数有误", err)
-				w.Write([]byte(`{"status":"fail","message":"time参数有误"}`))
+				c.JSON(200, gin.H{
+					"status":  "fail",
+					"message": "time参数有误",
+				})
 				return
 			}
 			if popes[sign] == nil {
@@ -226,16 +235,22 @@ func main() {
 					tprint(msg)
 					go urler(msg, name, 0, "new")
 				}
-				w.Write([]byte(`{"status":"ok","data":"init"}`))
+				c.JSON(200, gin.H{
+					"status": "ok",
+					"data":   "init",
+				})
 			} else {
 				popes[sign].a = ttime
 				popes[sign].aa = ttime
 				popes[sign].b = name
 				popes[sign].c = ip
 				popes[sign].d = backend
-				w.Write([]byte(`{"status":"ok","data":"continue"}`))
+				c.JSON(200, gin.H{
+					"status": "ok",
+					"data":   "continue",
+				})
 			}
 		}
 	})
-	s.ListenAndServe()
+	e.Run(":" + port)
 }
